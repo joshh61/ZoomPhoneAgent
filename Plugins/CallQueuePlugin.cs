@@ -49,7 +49,39 @@ public sealed class CallQueuePlugin
         [Description("The call queue ID. Use ListCallQueues first to find the ID.")] string callQueueId)
     {
         var result = await _api.GetAsync($"/phone/call_queues/{Uri.EscapeDataString(callQueueId)}");
-        return result.ToString();
+        return FormatQueueDetails(result);
+    }
+
+    private static string FormatQueueDetails(JsonElement queue)
+    {
+        var lines = new List<string>();
+
+        var name = queue.TryGetProperty("name", out var n) ? n.GetString() : "Unknown";
+        lines.Add($"Queue: {name}");
+
+        if (queue.TryGetProperty("extension_number", out var ext)) lines.Add($"Extension: {ext}");
+        if (queue.TryGetProperty("site", out var s) && s.TryGetProperty("name", out var sn)) lines.Add($"Site: {sn.GetString()}");
+        if (queue.TryGetProperty("status", out var st)) lines.Add($"Status: {st.GetString()}");
+        if (queue.TryGetProperty("phone_numbers", out var nums) && nums.GetArrayLength() > 0)
+        {
+            var phoneNums = new List<string>();
+            foreach (var num in nums.EnumerateArray())
+                if (num.TryGetProperty("number", out var pn)) phoneNums.Add(pn.GetString() ?? "");
+            lines.Add($"Phone Numbers: {string.Join(", ", phoneNums)}");
+        }
+        if (queue.TryGetProperty("members", out var members))
+        {
+            lines.Add($"Members ({members.GetArrayLength()}):");
+            foreach (var m in members.EnumerateArray())
+            {
+                var mName = m.TryGetProperty("name", out var mn) ? mn.GetString() : "Unknown";
+                var mExt = m.TryGetProperty("extension_number", out var mx) ? mx.ToString() : "N/A";
+                var receive = m.TryGetProperty("receive_call", out var rc) ? rc.GetBoolean() : false;
+                lines.Add($"  - {mName} | Ext: {mExt} | Receiving: {(receive ? "Yes" : "No")}");
+            }
+        }
+
+        return string.Join("\n", lines);
     }
 
     [KernelFunction, Description("List the members (agents) assigned to a specific call queue.")]

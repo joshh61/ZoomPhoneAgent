@@ -49,6 +49,38 @@ public sealed class AutoReceptionistPlugin
         [Description("The auto receptionist ID. Use ListAutoReceptionists first to find the ID.")] string autoReceptionistId)
     {
         var result = await _api.GetAsync($"/phone/auto_receptionists/{Uri.EscapeDataString(autoReceptionistId)}");
-        return result.ToString();
+        return FormatAutoReceptionistDetails(result);
+    }
+
+    private static string FormatAutoReceptionistDetails(JsonElement ar)
+    {
+        var lines = new List<string>();
+
+        var name = ar.TryGetProperty("name", out var n) ? n.GetString() : "Unknown";
+        lines.Add($"Auto Receptionist: {name}");
+
+        if (ar.TryGetProperty("extension_number", out var ext)) lines.Add($"Extension: {ext}");
+        if (ar.TryGetProperty("site", out var s) && s.TryGetProperty("name", out var sn)) lines.Add($"Site: {sn.GetString()}");
+        if (ar.TryGetProperty("status", out var st)) lines.Add($"Status: {st.GetString()}");
+        if (ar.TryGetProperty("phone_numbers", out var nums) && nums.GetArrayLength() > 0)
+        {
+            var phoneNums = new List<string>();
+            foreach (var num in nums.EnumerateArray())
+                if (num.TryGetProperty("number", out var pn)) phoneNums.Add(pn.GetString() ?? "");
+            lines.Add($"Phone Numbers: {string.Join(", ", phoneNums)}");
+        }
+        if (ar.TryGetProperty("ivr", out var ivr) && ivr.TryGetProperty("key_actions", out var keys))
+        {
+            lines.Add("IVR Key Actions:");
+            foreach (var key in keys.EnumerateArray())
+            {
+                var keyNum = key.TryGetProperty("key", out var k) ? k.ToString() : "?";
+                var action = key.TryGetProperty("action", out var a) ? a.GetString() : "N/A";
+                var target = key.TryGetProperty("target", out var t) && t.TryGetProperty("name", out var tn) ? tn.GetString() : "";
+                lines.Add($"  - Press {keyNum}: {action}{(string.IsNullOrEmpty(target) ? "" : $" → {target}")}");
+            }
+        }
+
+        return string.Join("\n", lines);
     }
 }
